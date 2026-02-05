@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Play, RotateCcw, ChevronLeft, ChevronRight, Check, Lightbulb } from "lucide-react";
+import { Play, RotateCcw, ChevronLeft, ChevronRight, Check, Lightbulb, Eye, ExternalLink } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -23,6 +23,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { usePyodide } from "@/contexts/pyodide-context";
 import { useProgress } from "@/contexts/progress-context";
 import { OutputPanel } from "@/components/output-panel";
@@ -43,7 +51,7 @@ interface Props {
 }
 
 export function ExercisePage({ exercise }: Props) {
-  const { runPython, status } = usePyodide();
+  const { runPython, status, resetNamespace } = usePyodide();
   const { isComplete, markComplete, getSavedCode, saveCode } = useProgress();
   const [code, setCode] = useState(getSavedCode("course", exercise.id) || exercise.code);
   const [output, setOutput] = useState<{
@@ -53,13 +61,22 @@ export function ExercisePage({ exercise }: Props) {
   const [isRunning, setIsRunning] = useState(false);
   const [activeTab, setActiveTab] = useState("problem");
   const [hintsOpen, setHintsOpen] = useState(false);
+  const [showSolutionDialog, setShowSolutionDialog] = useState(false);
 
   const isReady = status === "ready";
-  const isLoading = status === "loading-runtime" || status === "loading-sklearn";
+  const hasSolution = !!exercise.solution;
+  const isLoading = status === "loading-runtime" || status === "loading-packages";
   const completed = isComplete("course", exercise.id);
 
   const prevExercise = getPreviousExercise(exercise.id);
   const nextExercise = getNextExercise(exercise.id);
+
+  // Reset Python namespace when switching exercises
+  useEffect(() => {
+    if (status === "ready") {
+      resetNamespace();
+    }
+  }, [exercise.id, status, resetNamespace]);
 
   // Save code changes
   useEffect(() => {
@@ -91,6 +108,26 @@ export function ExercisePage({ exercise }: Props) {
   const handleMarkComplete = useCallback(() => {
     markComplete("course", exercise.id, code);
   }, [markComplete, exercise.id, code]);
+
+  const handleSolutionClick = useCallback(() => {
+    // Check if user has modified the code from the original
+    const hasModified = code !== exercise.code;
+    if (hasModified) {
+      setShowSolutionDialog(true);
+    } else {
+      // No modifications, just load solution
+      if (exercise.solution) {
+        setCode(exercise.solution);
+      }
+    }
+  }, [code, exercise.code, exercise.solution]);
+
+  const handleConfirmSolution = useCallback(() => {
+    if (exercise.solution) {
+      setCode(exercise.solution);
+    }
+    setShowSolutionDialog(false);
+  }, [exercise.solution]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -177,6 +214,24 @@ export function ExercisePage({ exercise }: Props) {
                     <p>Reset code (Ctrl+Shift+R)</p>
                   </TooltipContent>
                 </Tooltip>
+                {hasSolution && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSolutionClick}
+                        disabled={isRunning}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Solution
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Load solution code</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {!completed && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -309,6 +364,27 @@ export function ExercisePage({ exercise }: Props) {
                     </div>
                   </div>
                 )}
+
+                {exercise.docsUrl && exercise.docsUrl.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-md font-semibold mb-2">Documentation</h3>
+                    <ul className="space-y-1">
+                      {exercise.docsUrl.map((url, i) => (
+                        <li key={i}>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {url.split('/stable/')[1]?.replace('.html', '').replace(/#/g, ' > ') || 'sklearn docs'}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
@@ -318,6 +394,27 @@ export function ExercisePage({ exercise }: Props) {
           </Tabs>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Solution Confirmation Dialog */}
+      <Dialog open={showSolutionDialog} onOpenChange={setShowSolutionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Load Solution?</DialogTitle>
+            <DialogDescription>
+              You have made changes to the code. Loading the solution will
+              replace your current code. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSolutionDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmSolution}>
+              Load Solution
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

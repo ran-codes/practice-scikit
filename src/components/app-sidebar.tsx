@@ -73,7 +73,7 @@ export function AppSidebar() {
         return 0;
       case "loading-runtime":
         return 33;
-      case "loading-sklearn":
+      case "loading-packages":
         return 66;
       case "ready":
         return 100;
@@ -90,8 +90,8 @@ export function AppSidebar() {
         return "Initializing...";
       case "loading-runtime":
         return "Loading Python...";
-      case "loading-sklearn":
-        return "Loading scikit-learn...";
+      case "loading-packages":
+        return "Loading packages...";
       case "ready":
         return "Ready";
       case "error":

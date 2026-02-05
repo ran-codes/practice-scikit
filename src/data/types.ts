@@ -3,9 +3,11 @@ export interface BaseExercise {
   title: string;
   description: string;
   code: string;
+  solution?: string;
   difficulty: "easy" | "medium" | "hard";
   hints?: string[];
   expectedOutput?: string;
+  docsUrl?: string[];
 }
 
 export interface CourseExercise extends BaseExercise {

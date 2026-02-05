@@ -13,7 +13,7 @@ import { runPythonCode, type PythonResult } from "@/lib/run-python";
 export type PyodideStatus =
   | "idle"
   | "loading-runtime"
-  | "loading-sklearn"
+  | "loading-packages"
   | "ready"
   | "error";
 
@@ -22,6 +22,7 @@ interface PyodideContextValue {
   status: PyodideStatus;
   error: string | null;
   runPython: (code: string) => Promise<PythonResult>;
+  resetNamespace: () => Promise<void>;
 }
 
 const PyodideContext = createContext<PyodideContextValue | null>(null);
@@ -66,14 +67,15 @@ export function PyodideProvider({ children }: { children: ReactNode }) {
         });
 
         if (!mounted) return;
-        setStatus("loading-sklearn");
+        setStatus("loading-packages");
 
         // Load scikit-learn and dependencies
-        await py.loadPackage(["scikit-learn", "pandas", "numpy", "matplotlib"]);
+        await py.loadPackage(["scikit-learn", "pandas", "numpy", "matplotlib", "polars"]);
         await py.runPythonAsync(`
 import sklearn
 import pandas as pd
 import numpy as np
+import polars as pl
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for browser
 import matplotlib.pyplot as plt
@@ -112,8 +114,39 @@ plt.rcParams['figure.dpi'] = 100
     [pyodide]
   );
 
+  const resetNamespace = useCallback(async () => {
+    if (!pyodide) return;
+
+    // Clear all user-defined variables but keep standard imports
+    await pyodide.runPythonAsync(`
+# Keep only the standard imports and built-ins
+_keep_names = {
+    # Standard imports we set up
+    'sklearn', 'pd', 'np', 'pl', 'plt', 'matplotlib',
+    'pandas', 'numpy', 'polars',
+    # Built-ins and internals
+    '__name__', '__doc__', '__package__', '__loader__', '__spec__',
+    '__builtins__', '__file__', '__cached__',
+}
+
+# Get all current global names
+_all_names = list(globals().keys())
+
+# Delete user-defined variables
+for _name in _all_names:
+    if _name not in _keep_names and not _name.startswith('_'):
+        try:
+            del globals()[_name]
+        except:
+            pass
+
+# Clean up our temp variables
+del _keep_names, _all_names, _name
+`);
+  }, [pyodide]);
+
   return (
-    <PyodideContext.Provider value={{ pyodide, status, error, runPython }}>
+    <PyodideContext.Provider value={{ pyodide, status, error, runPython, resetNamespace }}>
       {children}
     </PyodideContext.Provider>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Play, RotateCcw } from "lucide-react";
+import { Play, RotateCcw, Eye, ExternalLink } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,6 +16,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { usePyodide } from "@/contexts/pyodide-context";
 import { OutputPanel } from "@/components/output-panel";
 import type { Puzzle } from "@/data/puzzles";
@@ -34,7 +42,7 @@ interface Props {
 }
 
 export function PuzzlePage({ puzzle }: Props) {
-  const { runPython, status } = usePyodide();
+  const { runPython, status, resetNamespace } = usePyodide();
   const [code, setCode] = useState(puzzle.code);
   const [output, setOutput] = useState<{
     html?: string;
@@ -42,9 +50,18 @@ export function PuzzlePage({ puzzle }: Props) {
   } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTab, setActiveTab] = useState("problem");
+  const [showSolutionDialog, setShowSolutionDialog] = useState(false);
 
   const isReady = status === "ready";
-  const isLoading = status === "loading-runtime" || status === "loading-sklearn";
+  const isLoading = status === "loading-runtime" || status === "loading-packages";
+  const hasSolution = !!puzzle.solution;
+
+  // Reset Python namespace when switching puzzles
+  useEffect(() => {
+    if (status === "ready") {
+      resetNamespace();
+    }
+  }, [puzzle.id, status, resetNamespace]);
 
   const handleRun = useCallback(async () => {
     if (!isReady || isRunning) return;
@@ -64,6 +81,26 @@ export function PuzzlePage({ puzzle }: Props) {
     setOutput(null);
     setActiveTab("problem");
   }, [puzzle.code]);
+
+  const handleSolutionClick = useCallback(() => {
+    // Check if user has modified the code from the original
+    const hasModified = code !== puzzle.code;
+    if (hasModified) {
+      setShowSolutionDialog(true);
+    } else {
+      // No modifications, just load solution
+      if (puzzle.solution) {
+        setCode(puzzle.solution);
+      }
+    }
+  }, [code, puzzle.code, puzzle.solution]);
+
+  const handleConfirmSolution = useCallback(() => {
+    if (puzzle.solution) {
+      setCode(puzzle.solution);
+    }
+    setShowSolutionDialog(false);
+  }, [puzzle.solution]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -132,6 +169,24 @@ export function PuzzlePage({ puzzle }: Props) {
                     <p>Reset code (Ctrl+Shift+R)</p>
                   </TooltipContent>
                 </Tooltip>
+                {hasSolution && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSolutionClick}
+                        disabled={isRunning}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Solution
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Load solution code</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             </div>
 
@@ -195,6 +250,27 @@ export function PuzzlePage({ puzzle }: Props) {
                   <li>Modify the code to solve the puzzle</li>
                   <li>Click Run or press Ctrl+Enter to execute</li>
                 </ol>
+
+                {puzzle.docsUrl && puzzle.docsUrl.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-md font-semibold mb-2">Documentation</h3>
+                    <ul className="space-y-1">
+                      {puzzle.docsUrl.map((url, i) => (
+                        <li key={i}>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {url.split('/stable/')[1]?.replace('.html', '').replace(/#/g, ' > ') || 'sklearn docs'}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
@@ -204,6 +280,27 @@ export function PuzzlePage({ puzzle }: Props) {
           </Tabs>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Solution Confirmation Dialog */}
+      <Dialog open={showSolutionDialog} onOpenChange={setShowSolutionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Load Solution?</DialogTitle>
+            <DialogDescription>
+              You have made changes to the code. Loading the solution will
+              replace your current code. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSolutionDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmSolution}>
+              Load Solution
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
